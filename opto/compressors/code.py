@@ -53,20 +53,20 @@ class CodeCompressor:
         """In unified diffs, keep changed lines plus a little context; fold long
         runs of unchanged lines into a marker."""
         lines = text.splitlines()
-        if not any(l.startswith(("+", "-", "@@")) for l in lines):
+        if not any(ln.startswith(("+", "-", "@@")) for ln in lines):
             return text
         keep = [False] * len(lines)
-        for i, l in enumerate(lines):
-            if l.startswith(("+", "-", "@@", "diff ", "index ")):
+        for i, ln in enumerate(lines):
+            if ln.startswith(("+", "-", "@@", "diff ", "index ")):
                 for j in range(max(0, i - context), min(len(lines), i + context + 1)):
                     keep[j] = True
         out, folded = [], 0
-        for i, l in enumerate(lines):
+        for i, ln in enumerate(lines):
             if keep[i]:
                 if folded:
                     out.append(f"  … {folded} unchanged line(s) …")
                     folded = 0
-                out.append(l)
+                out.append(ln)
             else:
                 folded += 1
         if folded:

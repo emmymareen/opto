@@ -32,23 +32,23 @@ class TextCompressor:
         return out.strip()
 
     def _compress_log(self, text: str, aggressiveness: float) -> str:
-        lines = [l.rstrip() for l in text.splitlines() if l.strip()]
+        lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
         # de-duplicate identical lines, remembering how many times each appeared
         seen: "OrderedDict[str, int]" = OrderedDict()
-        for l in lines:
-            seen[l] = seen.get(l, 0) + 1
+        for ln in lines:
+            seen[ln] = seen.get(ln, 0) + 1
 
         deduped = []
-        for l, n in seen.items():
-            deduped.append(f"{l}  (×{n})" if n > 1 else l)
+        for ln, n in seen.items():
+            deduped.append(f"{ln}  (×{n})" if n > 1 else ln)
 
         # at moderate+ aggressiveness, keep only WARN and above (the signal)
         if aggressiveness >= 0.5:
             kept = []
-            for l in deduped:
-                m = _SEVERITY.search(l)
+            for ln in deduped:
+                m = _SEVERITY.search(ln)
                 if not m or _SEV_RANK.get(m.group(1).lower(), 2) >= 3:
-                    kept.append(l)
+                    kept.append(ln)
             dropped = len(deduped) - len(kept)
             if dropped > 0:
                 kept.append(f"… {dropped} lower-severity log line(s) elided …")

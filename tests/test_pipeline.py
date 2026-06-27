@@ -1,6 +1,5 @@
 import json
 
-import pytest
 
 from opto.config import Config
 from opto.pipeline import Pipeline
