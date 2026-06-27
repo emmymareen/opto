@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opto-ai"
+version = "0.1.0"
+description = "Local, reversible context-compression proxy for GitHub Copilot. Fewer tokens, same answers, with a quality guarantee."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Emmy" }]
+keywords = ["llm", "copilot", "token", "compression", "proxy", "context", "enterprise"]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "httpx>=0.27",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "tiktoken>=0.6",
+    "typer>=0.12",
+    "rich>=13.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+opto = "opto.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/emmymareen/opto"
+Repository = "https://github.com/emmymareen/opto"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["opto*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
