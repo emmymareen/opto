@@ -66,6 +66,30 @@ def stats():
     console.print(table)
 
 
+@app.command(name="copilot-auth")
+def copilot_auth():
+    """Check the Copilot auth bridge: discover the OAuth token, exchange it, and
+    report the resolved endpoint. No API key required — uses your Copilot licence."""
+    from opto.copilot_auth import build_session_from_environment
+    from opto.config import get_config
+
+    cfg = get_config()
+    session = build_session_from_environment(cfg.github_host)
+    if session is None:
+        console.print("[red]No GitHub Copilot OAuth token found.[/]")
+        console.print("Sign in via the Copilot CLI / editor, or set "
+                      "OPTO_COPILOT_GITHUB_TOKEN.")
+        raise typer.Exit(code=1)
+    try:
+        base = session.api_base()
+    except Exception as exc:
+        console.print(f"[red]Token exchange failed:[/] {exc}")
+        raise typer.Exit(code=1)
+    console.print("[green]Copilot auth OK[/] — no API key needed.")
+    console.print(f"  resolved endpoint: {base}")
+    console.print(f"  integration id:    {session.integration_id}")
+
+
 @app.command()
 def wrap(agent: str = typer.Argument(..., help="Agent to wrap, e.g. 'copilot'.")):
     """Print the config needed to route an agent through Opto."""

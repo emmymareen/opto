@@ -15,6 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from opto.config import Config, get_config
+from opto.copilot_auth import build_session_from_environment
 from opto.pipeline import Pipeline
 from opto.telemetry import Telemetry
 
@@ -32,9 +33,16 @@ def create_app(config: Config | None = None) -> FastAPI:
     pipeline = Pipeline(config=cfg)
     telemetry = Telemetry(cfg.telemetry_db, cfg.audit_log_path, redact=cfg.redact_content_in_logs)
 
+    # Optional Copilot auth bridge: when enabled, Opto does the GitHub->Copilot
+    # token exchange itself and overrides the upstream base + auth headers.
+    copilot_session = None
+    if cfg.manage_copilot_auth:
+        copilot_session = build_session_from_environment(cfg.github_host)
+
     app.state.config = cfg
     app.state.pipeline = pipeline
     app.state.telemetry = telemetry
+    app.state.copilot_session = copilot_session
 
     @app.get("/healthz")
     async def healthz():
@@ -58,10 +66,24 @@ def create_app(config: Config | None = None) -> FastAPI:
         else:
             forward_body = raw
 
-        url = cfg.upstream_base_url.rstrip("/") + "/" + path
         headers = {
             k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP
         }
+
+        # Copilot auth bridge: override base URL + auth headers with a freshly
+        # exchanged short-lived token routed to the licence-correct endpoint.
+        base = cfg.upstream_base_url
+        if copilot_session is not None:
+            try:
+                base = copilot_session.api_base()
+                headers.update(copilot_session.auth_headers())
+            except Exception as exc:  # surface as a clear upstream error
+                return JSONResponse(
+                    {"error": {"message": f"Copilot auth failed: {exc}"}},
+                    status_code=502,
+                )
+
+        url = base.rstrip("/") + "/" + path
         params = dict(request.query_params)
         stream_requested = isinstance(body, dict) and body.get("stream") is True
 

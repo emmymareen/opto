@@ -25,6 +25,18 @@ class Config(BaseSettings):
     )
     request_timeout_s: float = Field(default=120.0, description="Upstream request timeout.")
 
+    # ---- Copilot auth bridge ----
+    manage_copilot_auth: bool = Field(
+        default=False,
+        description="If true, Opto performs the GitHub->Copilot token exchange itself "
+        "and routes to the discovered endpoint (needed for enterprise Copilot "
+        "when the client can't hand Opto a usable token).",
+    )
+    github_host: str = Field(
+        default="github.com",
+        description="GitHub host for token exchange (set to your GHE domain if applicable).",
+    )
+
     # ---- Compression ----
     enabled: bool = Field(default=True, description="Master switch for compression.")
     min_tokens_to_compress: int = Field(
