@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from opto.cachealign import preserved_indices
 from opto.compressors import get_compressor
 from opto.config import Config, get_config
 from opto.cache import ReversibleCache
@@ -68,10 +69,20 @@ class Pipeline:
         query = _latest_user_text(messages)
         aggressiveness = _aggressiveness_for_target(cfg.target_ratio)
 
+        # Cache alignment: never compress the stable prefix (system + pinned),
+        # so the provider's prompt cache keeps hitting across turns.
+        pinned = (
+            preserved_indices(messages, cfg.preserve_system, cfg.pin_prefix_messages)
+            if cfg.align_cache
+            else set()
+        )
+
         # 1) build chunks by segmenting each message into typed spans, so embedded
         #    code/JSON inside prose messages is compressed too. Order is preserved.
         chunks: list[Chunk] = []
         for i, m in enumerate(messages):
+            if i in pinned:
+                continue
             text = _content_str(m)
             if not text.strip():
                 continue

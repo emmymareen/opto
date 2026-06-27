@@ -52,6 +52,14 @@ def create_app(config: Config | None = None) -> FastAPI:
     async def stats():
         return telemetry.summary()
 
+    @app.get("/opto/retrieve/{cache_id}")
+    async def retrieve(cache_id: str):
+        """Recover an original (pre-compression) span by its cache id."""
+        original = pipeline.cache.retrieve(cache_id)
+        if original is None:
+            return JSONResponse({"error": "not found or expired"}, status_code=404)
+        return {"id": cache_id, "original": original}
+
     @app.api_route("/{path:path}", methods=["POST"])
     async def proxy(path: str, request: Request):
         raw = await request.body()

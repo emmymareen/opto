@@ -63,17 +63,25 @@ Every request flows through one pipeline:
 1. **Auth bridge** *(Copilot, optional)* — exchange your GitHub OAuth token for a
    short-lived Copilot bearer token and resolve the licence-correct endpoint
    (Individual / Business / Enterprise). No API key required.
-2. **Segment** — split each message into typed spans (code / diff / JSON / log /
+2. **Cache alignment** — keep the stable prompt prefix (system + pinned messages)
+   uncompressed so the provider's KV cache keeps hitting across turns.
+3. **Segment** — split each message into typed spans (code / diff / JSON / log /
    prose), so embedded code or JSON inside a prose message is compressed too.
-3. **Score relevance** — rank spans against the latest user turn; drop the
+4. **Score relevance** — rank spans against the latest user turn; drop the
    low-value ones (kept reversibly in the cache).
-4. **Compress** — each span goes to a specialised compressor: JSON crusher,
-   code/diff trimmer, log deduper + severity filter, prose cleaner.
-5. **Quality gate** — estimate content-aware fidelity risk; if it's too high,
+5. **Compress** — each span goes to a specialised compressor: JSON crusher,
+   **AST-aware** Python code compressor (regex fallback for other languages),
+   log deduper + severity filter, and an **extractive prose summarizer** with a
+   pluggable open-source-model backend.
+6. **Quality gate** — estimate content-aware fidelity risk; if it's too high,
    send the request uncompressed instead.
-6. **Forward & stream** — attach auth/identity headers, send to the resolved
+7. **Forward & stream** — attach auth/identity headers, send to the resolved
    upstream, stream the response back unchanged.
-7. **Telemetry** — record before/after tokens and every decision for the dashboard.
+8. **Telemetry** — record before/after tokens and every decision for the dashboard.
+
+Originals are always recoverable via `opto retrieve <id>` (or `GET
+/opto/retrieve/{id}`), and the [accuracy harness](#proving-quality) lets you prove
+answers don't change.
 
 ## Install
 
@@ -162,6 +170,28 @@ out (control). Raw prompt content is never displayed or logged when
 
 A convenience launcher is included: `./run_dashboard.sh`.
 
+## Proving quality
+
+"Same answers" is a claim you should be able to verify, not take on faith. The
+eval harness runs tasks through a model twice — original vs Opto-compressed
+context — and reports the accuracy delta alongside token savings.
+
+```bash
+opto eval                  # dry run: token savings on the bundled sample tasks
+```
+
+For a real accuracy delta, implement a `ModelClient` (any model you can reach —
+an API key for testing, or a local open-source model) and run:
+
+```python
+from opto.evals import EvalHarness, load_sample_tasks
+res = EvalHarness().run(load_sample_tasks(), my_model_client)
+print(res.accuracy_delta, res.saved_fraction)
+```
+
+Swap `load_sample_tasks()` for GSM8K / SQuAD v2 / TruthfulQA / BFCL via the
+`datasets` library to reproduce standard benchmarks.
+
 ## Configuration
 
 All settings are environment variables prefixed `OPTO_` (or a `.env` file — see
@@ -174,6 +204,8 @@ All settings are environment variables prefixed `OPTO_` (or a `.env` file — se
 | `OPTO_ENABLED` | `true` | Master compression switch |
 | `OPTO_MIN_TOKENS_TO_COMPRESS` | `400` | Skip tiny requests |
 | `OPTO_TARGET_RATIO` | `0.45` | Keep ~this fraction of tokens |
+| `OPTO_ALIGN_CACHE` | `true` | Keep stable prefix uncompressed (cache hits) |
+| `OPTO_PIN_PREFIX_MESSAGES` | `0` | Pin N leading messages verbatim |
 | `OPTO_RELEVANCE_DROP_THRESHOLD` | `0.12` | Drop spans below this relevance |
 | `OPTO_QUALITY_GATE_ENABLED` | `true` | Enable the quality guarantee |
 | `OPTO_QUALITY_RISK_THRESHOLD` | `0.7` | Back off above this risk |

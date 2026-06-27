@@ -66,6 +66,44 @@ def stats():
     console.print(table)
 
 
+@app.command()
+def eval(full: bool = typer.Option(False, help="(reserved) run against a model; "
+                                               "default is a savings-only dry run.")):
+    """Run the accuracy harness on the bundled sample tasks.
+
+    Without a model wired in, this reports token savings per task (dry run). To
+    measure accuracy delta, use the EvalHarness API with a ModelClient."""
+    from opto.evals import EvalHarness, load_sample_tasks
+
+    tasks = load_sample_tasks()
+    res = EvalHarness().dry_run(tasks)
+    table = Table(title="Opto eval (dry run — savings only)")
+    table.add_column("Task")
+    table.add_column("Category")
+    table.add_column("Saved", justify="right")
+    for t in res.per_task:
+        table.add_row(t["id"], t["category"], f"{t['saved_fraction']*100:.0f}%")
+    console.print(table)
+    console.print(f"Overall: {res.saved_fraction*100:.1f}% tokens saved "
+                  f"across {res.n} tasks.")
+    if not full:
+        console.print("[dim]Wire a ModelClient to also measure accuracy delta.[/]")
+
+
+@app.command()
+def retrieve(cache_id: str = typer.Argument(..., help="Cache id from a drop marker.")):
+    """Recover an original (pre-compression) span from the reversible cache."""
+    from opto.cache import ReversibleCache
+
+    cfg = get_config()
+    cache = ReversibleCache(cfg.cache_dir, cfg.cache_ttl_s)
+    original = cache.retrieve(cache_id)
+    if original is None:
+        console.print("[red]Not found or expired.[/]")
+        raise typer.Exit(code=1)
+    console.print(original)
+
+
 @app.command(name="copilot-auth")
 def copilot_auth():
     """Check the Copilot auth bridge: discover the OAuth token, exchange it, and

@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from collections import OrderedDict
 
+from opto.compressors.prose import compress_prose
+
 _WS = re.compile(r"[ \t]{2,}")
 _BLANK_RUN = re.compile(r"\n\s*\n\s*\n+")
 _SEVERITY = re.compile(r"(?i)\b(FATAL|ERROR|WARN(?:ING)?|INFO|DEBUG|TRACE)\b")
@@ -27,9 +29,9 @@ class TextCompressor:
             return text
         if self.log_mode:
             return self._compress_log(text, aggressiveness)
-        out = _WS.sub(" ", text)
-        out = _BLANK_RUN.sub("\n\n", out)
-        return out.strip()
+        # prose: extractive summarization (or pluggable model) + whitespace tidy
+        out = _BLANK_RUN.sub("\n\n", _WS.sub(" ", text)).strip()
+        return compress_prose(out, aggressiveness)
 
     def _compress_log(self, text: str, aggressiveness: float) -> str:
         lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]

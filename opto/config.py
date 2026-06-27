@@ -50,6 +50,19 @@ class Config(BaseSettings):
         description="Aim to keep this fraction of original tokens (0.45 = ~55% saved).",
     )
 
+    # ---- Cache alignment ----
+    align_cache: bool = Field(
+        default=True,
+        description="Keep the stable prompt prefix uncompressed so provider KV "
+        "caches keep hitting (compressing it would bust the cache every turn).",
+    )
+    preserve_system: bool = Field(
+        default=True, description="Never compress leading system messages."
+    )
+    pin_prefix_messages: int = Field(
+        default=0, description="Additionally pin this many leading messages verbatim."
+    )
+
     # ---- Relevance ----
     relevance_drop_threshold: float = Field(
         default=0.12,
