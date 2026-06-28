@@ -80,12 +80,10 @@ class Pipeline:
         # 1) build chunks by segmenting each message into typed spans, so embedded
         #    code/JSON inside prose messages is compressed too. Order is preserved.
         chunks: list[Chunk] = []
-        for i, m in enumerate(messages):
-            if i in pinned:
-                continue
-            text = _content_str(m)
-            if not text.strip():
-                continue
+
+        def add_spans(text: str, i: int, block_index: int | None) -> None:
+            if not text or not text.strip():
+                return
             for span_text, kind in segment(text):
                 if not span_text:
                     continue
@@ -94,9 +92,28 @@ class Pipeline:
                         text=span_text,
                         kind=kind,
                         message_index=i,
+                        block_index=block_index,
                         original_tokens=count_tokens(span_text),
                     )
                 )
+
+        for i, m in enumerate(messages):
+            if i in pinned:
+                continue
+            content = m.get("content")
+            if isinstance(content, str):
+                add_spans(content, i, None)
+            elif isinstance(content, list):
+                # Anthropic-style structured content: compress ONLY text blocks,
+                # in place, leaving tool_use/tool_result/images/cache_control intact.
+                for bi, block in enumerate(content):
+                    if (
+                        isinstance(block, dict)
+                        and block.get("type") == "text"
+                        and isinstance(block.get("text"), str)
+                    ):
+                        add_spans(block["text"], i, bi)
+            # any other content type is left untouched
 
         report.chunks_total = len(chunks)
 
@@ -147,16 +164,16 @@ class Pipeline:
             report.notes.append(decision.reason)
             return PipelineOutput(messages=messages, report=report)
 
-        # 5) reassemble compressed spans back into their messages, in order
+        # 5) reassemble compressed spans back into their messages, in order.
+        # Group by (message_index, block_index): None block = string content,
+        # otherwise write back into that text block, preserving all other blocks.
         new_messages = [dict(m) for m in messages]
-        rebuilt: dict[int, list[str]] = {}
+        rebuilt: dict[tuple[int, int | None], list[str]] = {}
         for ch, r in zip(chunks, results):
-            idx = ch.message_index
+            key = (ch.message_index, ch.block_index)
             if ch.dropped:
                 cache_id = self.cache.store(ch.text)
                 marker = f"[opto: dropped low-relevance context · retrieve id={cache_id}]"
-                # only honour the drop if the marker is actually cheaper than the
-                # original; otherwise keep the span verbatim (never inflate).
                 if count_tokens(marker) < ch.original_tokens:
                     piece = marker
                     report.chunks_dropped += 1
@@ -171,10 +188,17 @@ class Pipeline:
                 report.by_kind[ch.kind.value] = (
                     report.by_kind.get(ch.kind.value, 0) + r.saved_tokens
                 )
-            rebuilt.setdefault(idx, []).append(piece)
+            rebuilt.setdefault(key, []).append(piece)
 
-        for idx, pieces in rebuilt.items():
-            new_messages[idx]["content"] = "\n".join(pieces)
+        for (idx, bi), pieces in rebuilt.items():
+            joined = "\n".join(pieces)
+            if bi is None:
+                new_messages[idx]["content"] = joined
+            else:
+                # copy the block list so we don't mutate the caller's structure
+                blocks = [dict(b) if isinstance(b, dict) else b for b in new_messages[idx]["content"]]
+                blocks[bi] = {**blocks[bi], "text": joined}
+                new_messages[idx]["content"] = blocks
 
         report.compressed_tokens = sum(count_tokens(_content_str(m)) for m in new_messages)
         return PipelineOutput(messages=new_messages, report=report)

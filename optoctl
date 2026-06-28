@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# optoctl — start/stop Opto (proxy + dashboard) as background services.
+#
+#   ./optoctl start     # start proxy + dashboard
+#   ./optoctl stop      # stop both
+#   ./optoctl restart
+#   ./optoctl status    # show running state + cumulative savings
+#   ./optoctl logs      # tail both logs
+#
+# Configured for Claude Code / Anthropic by default. Override via env or .env.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+
+RUN_DIR="$ROOT/.opto/run"
+mkdir -p "$RUN_DIR"
+PROXY_PID="$RUN_DIR/proxy.pid"
+DASH_PID="$RUN_DIR/dashboard.pid"
+PROXY_LOG="$RUN_DIR/proxy.log"
+DASH_LOG="$RUN_DIR/dashboard.log"
+
+# Defaults (override by exporting before calling, or in a .env file).
+export OPTO_UPSTREAM_BASE_URL="${OPTO_UPSTREAM_BASE_URL:-https://api.anthropic.com}"
+PROXY_PORT="${OPTO_PORT:-8799}"
+DASH_PORT="${OPTO_DASHBOARD_PORT:-8800}"
+
+OPTO_BIN="$(command -v opto || true)"
+if [ -z "$OPTO_BIN" ]; then
+  echo "opto not found on PATH. Run: ./optoctl setup"; PYRUN="python3 -m opto.cli"
+else
+  PYRUN="$OPTO_BIN"
+fi
+
+_alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
+
+start() {
+  if _alive "$PROXY_PID"; then echo "proxy already running (pid $(cat "$PROXY_PID"))";
+  else
+    nohup $PYRUN proxy --port "$PROXY_PORT" >"$PROXY_LOG" 2>&1 &
+    echo $! > "$PROXY_PID"; echo "proxy started → http://127.0.0.1:$PROXY_PORT (upstream $OPTO_UPSTREAM_BASE_URL)"
+  fi
+  if _alive "$DASH_PID"; then echo "dashboard already running (pid $(cat "$DASH_PID"))";
+  else
+    nohup $PYRUN dashboard --port "$DASH_PORT" >"$DASH_LOG" 2>&1 &
+    echo $! > "$DASH_PID"; echo "dashboard started → http://127.0.0.1:$DASH_PORT"
+  fi
+  echo
+  echo "Point Claude Code at Opto (add to your shell profile to make it global):"
+  echo "  export ANTHROPIC_BASE_URL=http://127.0.0.1:$PROXY_PORT"
+}
+
+stop() {
+  for pf in "$PROXY_PID" "$DASH_PID"; do
+    if _alive "$pf"; then kill "$(cat "$pf")" 2>/dev/null && echo "stopped pid $(cat "$pf")"; fi
+    rm -f "$pf"
+  done
+}
+
+status() {
+  _alive "$PROXY_PID" && echo "proxy:     RUNNING (pid $(cat "$PROXY_PID"), :$PROXY_PORT)" || echo "proxy:     stopped"
+  _alive "$DASH_PID"  && echo "dashboard: RUNNING (pid $(cat "$DASH_PID"), :$DASH_PORT)" || echo "dashboard: stopped"
+  echo; $PYRUN stats 2>/dev/null || true
+}
+
+case "${1:-}" in
+  start)   start ;;
+  stop)    stop ;;
+  restart) stop; sleep 1; start ;;
+  status)  status ;;
+  logs)    tail -n 40 -f "$PROXY_LOG" "$DASH_LOG" ;;
+  setup)   "$ROOT/setup.sh" ;;
+  *) echo "usage: ./optoctl {start|stop|restart|status|logs|setup}"; exit 1 ;;
+esac

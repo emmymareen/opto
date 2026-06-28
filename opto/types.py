@@ -22,6 +22,9 @@ class Chunk:
     kind: ContentKind = ContentKind.PROSE
     # role/message index this chunk came from, for reassembly
     message_index: int = 0
+    # for structured (list) content: index of the text block this came from;
+    # None means the message's content is a plain string
+    block_index: int | None = None
     # 0..1 relevance score assigned by the relevance scorer
     relevance: float = 1.0
     # set True if the relevance stage decided to drop it

@@ -141,6 +141,32 @@ endpoint advertised for your tenant. Business/Enterprise client-identity headers
 `User-Agent`) are attached automatically and are overridable via `OPTO_COPILOT_*`
 environment variables.
 
+## Use globally with Claude Code (one-time setup)
+
+Route every Claude Code session through Opto with two commands:
+
+```bash
+./setup.sh          # installs Opto + adds ANTHROPIC_BASE_URL to your shell profile
+./optoctl start     # starts the proxy + dashboard in the background
+```
+
+Now use Claude Code normally — it routes through Opto automatically. Manage it with:
+
+```bash
+./optoctl status    # running state + cumulative tokens saved
+./optoctl stop      # stop proxy + dashboard
+./optoctl restart
+./optoctl logs      # tail both logs
+```
+
+The dashboard is at `http://127.0.0.1:8800`. Opto compresses only the **text**
+of each request — Anthropic tool calls, images, and `cache_control` blocks are
+passed through untouched, so Claude Code keeps working exactly as before.
+
+> Note: this routes terminal **Claude Code** (and any client honouring
+> `ANTHROPIC_BASE_URL`). The Claude.ai **web app / desktop Projects can't be
+> routed** — they have no endpoint override, so only API/CLI clients go through Opto.
+
 ## Integrating each tool
 
 Opto is an OpenAI/Anthropic-compatible proxy, so every tool integrates the same
