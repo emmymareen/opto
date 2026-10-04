@@ -13,6 +13,7 @@ import json
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
 from opto.config import Config, get_config
 from opto.copilot_auth import build_session_from_environment
@@ -62,6 +63,13 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.api_route("/{path:path}", methods=["POST"])
     async def proxy(path: str, request: Request):
+        if cfg.manage_copilot_auth and copilot_session is None:
+            return JSONResponse(
+                {"error": {"message": "Copilot auth is enabled, but no Copilot OAuth token "
+                 "was found. Sign in with Copilot CLI or set OPTO_COPILOT_GITHUB_TOKEN."}},
+                status_code=503,
+            )
+
         raw = await request.body()
         body = _safe_json(raw)
 
@@ -98,17 +106,30 @@ def create_app(config: Config | None = None) -> FastAPI:
         client = httpx.AsyncClient(timeout=cfg.request_timeout_s)
 
         if stream_requested:
-            async def event_stream():
-                try:
-                    async with client.stream(
-                        "POST", url, content=forward_body, headers=headers, params=params
-                    ) as resp:
-                        async for chunk in resp.aiter_raw():
-                            yield chunk
-                finally:
-                    await client.aclose()
+            try:
+                upstream_request = client.build_request(
+                    "POST", url, content=forward_body, headers=headers, params=params
+                )
+                resp = await client.send(upstream_request, stream=True)
+            except Exception:
+                await client.aclose()
+                raise
 
-            return StreamingResponse(event_stream(), media_type="text/event-stream")
+            response_headers = {
+                k: v for k, v in resp.headers.items()
+                if k.lower() not in _HOP_BY_HOP and k.lower() != "content-length"
+            }
+
+            async def close_upstream():
+                await resp.aclose()
+                await client.aclose()
+
+            return StreamingResponse(
+                resp.aiter_raw(),
+                status_code=resp.status_code,
+                headers=response_headers,
+                background=BackgroundTask(close_upstream),
+            )
 
         try:
             resp = await client.post(url, content=forward_body, headers=headers, params=params)

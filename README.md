@@ -30,6 +30,7 @@ compress when it would hurt answer quality.
 - [Quick start](#quick-start)
 - [Enterprise Copilot — no API key needed](#enterprise-copilot--no-api-key-needed)
 - [Integrating each tool](#integrating-each-tool)
+- [VS Code Copilot Chat](#vs-code-copilot-chat)
 - [The transparency dashboard](#the-transparency-dashboard)
 - [Configuration](#configuration)
 - [Use as a library](#use-as-a-library)
@@ -179,9 +180,56 @@ way: point its endpoint at Opto. `opto wrap <tool>` prints the exact lines.
 | **Claude Code** | `export ANTHROPIC_BASE_URL=http://127.0.0.1:8799` | Anthropic-format upstream (set `OPTO_UPSTREAM_BASE_URL`). |
 | **Any OpenAI client** | base URL → `http://127.0.0.1:8799` | LangChain, LiteLLM, SDKs, etc. |
 
-> **VS Code Copilot extension:** the stock extension pins to GitHub's host and
-> resists endpoint overrides. The CLI/proxy path above is the supported route
-> today; a VS Code chat-provider extension is on the roadmap.
+> **VS Code Copilot Chat:** use the Custom Endpoint setup below. It adds an
+> Opto-routed model to the model picker; it does not replace the built-in
+> Copilot model or redirect inline completions.
+
+## VS Code Copilot Chat
+
+VS Code supports custom chat model endpoints. Opto can use this supported
+configuration as a front door, then authenticate to the Copilot API with the
+GitHub OAuth token associated with your Copilot licence. No VS Code extension
+needs to be installed.
+
+1. Start Opto with its Copilot auth bridge enabled and verify it can find a
+   Copilot OAuth token:
+
+   ```bash
+   export OPTO_MANAGE_COPILOT_AUTH=1
+   opto copilot-auth
+   opto proxy
+   ```
+
+   If token discovery fails, set `OPTO_COPILOT_GITHUB_TOKEN` to a GitHub OAuth
+   token that has Copilot access before starting the proxy. Do not use a
+   personal access token. The `opto copilot-auth` check confirms that GitHub
+   accepts the token and returns an API endpoint.
+
+2. Generate the model configuration (replace the model ID with one currently
+   available to your Copilot plan):
+
+   ```bash
+   opto wrap vscode --model gpt-4.1
+   ```
+
+3. In VS Code, open **Manage Language Models → Add Models → Custom Endpoint**,
+   select **Chat Completions**, and add the generated provider/model object to
+   `chatLanguageModels.json`. Then choose the Opto model from the chat model
+   picker.
+
+The `opto-local` API key in the generated configuration is a placeholder. Opto
+replaces its Authorization header with the short-lived Copilot bearer token, so
+the placeholder is not sent to GitHub. If the auth bridge is enabled but cannot
+find a token, Opto returns an explicit error instead of forwarding that key.
+Use only model IDs your account is entitled to; GitHub remains responsible for
+model access, rate limits, and Copilot usage accounting.
+
+This is specifically a **Copilot Chat model** integration. It does not redirect
+the built-in Copilot model, inline completions, or other requests that do not
+use the selected custom chat model. VS Code's local custom-model feature can be
+disabled by an organization policy for Business/Enterprise accounts. See the
+[VS Code custom endpoint documentation](https://code.visualstudio.com/docs/agent-customization/language-models)
+and [Copilot model availability](https://docs.github.com/en/copilot/concepts/models/overview).
 
 ## The transparency dashboard
 

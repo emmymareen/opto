@@ -129,7 +129,10 @@ def copilot_auth():
 
 
 @app.command()
-def wrap(agent: str = typer.Argument(..., help="Agent to wrap, e.g. 'copilot'.")):
+def wrap(
+    agent: str = typer.Argument(..., help="Agent to wrap, e.g. 'copilot' or 'vscode'."),
+    model: str = typer.Option("gpt-4.1", "--model", help="Upstream model identifier."),
+):
     """Print the config needed to route an agent through Opto."""
     cfg = get_config()
     base = f"http://{cfg.host}:{cfg.port}"
@@ -137,8 +140,35 @@ def wrap(agent: str = typer.Argument(..., help="Agent to wrap, e.g. 'copilot'.")
         console.print("[bold]Route GitHub Copilot through Opto:[/]")
         console.print(f"  export OPENAI_BASE_URL={base}")
         console.print(f"  export COPILOT_PROVIDER_API_URL={base}")
-        console.print("Then start Copilot CLI as usual. For VS Code, set the Copilot")
-        console.print(f"  advanced 'debug.overrideProxyUrl' / endpoint override to {base}.")
+        console.print("Then start Copilot CLI as usual. For VS Code Chat, run:")
+        console.print("  opto wrap vscode --model <available-model-id>")
+    elif agent.lower() in {"vscode", "vscode-copilot"}:
+        console.print("[bold]Route VS Code Copilot Chat through Opto:[/]")
+        console.print("Start the proxy with Copilot auth enabled:")
+        console.print("  export OPTO_MANAGE_COPILOT_AUTH=1")
+        console.print("  opto copilot-auth   # verify a Copilot OAuth token is discoverable")
+        console.print("  opto proxy")
+        console.print("In VS Code, choose Manage Language Models → Add Models → Custom Endpoint.")
+        console.print("Use Chat Completions and this model configuration:")
+        console.print_json(data={
+            "name": "Opto",
+            "vendor": "customendpoint",
+            "apiKey": "opto-local",
+            "apiType": "chat-completions",
+            "models": [{
+                "id": model,
+                "name": f"{model} via Opto",
+                "url": f"{base}/v1/chat/completions",
+                "toolCalling": True,
+                "vision": False,
+                "maxInputTokens": 128000,
+                "maxOutputTokens": 16000,
+            }],
+        })
+        console.print("The placeholder API key is replaced by Opto's Copilot bearer token.")
+        console.print("Use a model ID currently available to your Copilot plan; for example:")
+        console.print(f"  opto wrap vscode --model {model}")
+        console.print("This configures a separate chat model; inline completions stay on Copilot.")
     else:
         console.print(f"Point {agent}'s OpenAI-compatible base URL at: {base}")
 
